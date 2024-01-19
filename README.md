@@ -17,7 +17,7 @@ Here are different preset "variables" that you can search and replace in this te
 [![Netlify Status]()]()
   Golang specific buttons:
 -->
-![0.1.0](https://img.shields.io/badge/status-a.1.0-red)
+![0.1.0](https://img.shields.io/badge/status-0.1.0-red)
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
@@ -26,15 +26,15 @@ Here are different preset "variables" that you can search and replace in this te
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
 
-[![GoDoc](https://godoc.org/github.com/ethanbaker/sql_wrapper?status.svg)](https://godoc.org/github.com/ethanbaker/sql_wrapper)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ethanbaker/sql_wrapper)](https://goreportcard.com/report/github.com/ethanbaker/sql_wrapper)
+[![GoDoc](https://godoc.org/github.com/ethanbaker/sql-wrapper?status.svg)](https://godoc.org/github.com/ethanbaker/sql-wrapper)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ethanbaker/sql-wrapper)](https://goreportcard.com/report/github.com/ethanbaker/sql-wrapper)
 [![Go Coverage](./docs/go-coverage.svg)](./docs/go-coverage.svg)
 
 
 <!-- PROJECT LOGO -->
 <br><br><br>
 <div align="center">
-  <a href="https://github.com/ethanbaker/sql_wrapper">
+  <a href="https://github.com/ethanbaker/sql-wrapper">
     <img src="./docs/logo.png" alt="Logo" width="80" height="80">
   </a>
 
@@ -117,9 +117,9 @@ Next, a `Read` function needs to be created that is attached to the struct. Beca
 
 ```go
 // Function definition
-func (r Record) Read(rows *sql.Rows) (map[int]sql_wrapper.Readable, error) {
+func (r Record) Read(rows *sql.Rows) (map[int]sql-wrapper.Readable, error) {
   // Create a new list of items
-  items := map[int]sql_wrapper.Readable{}
+  items := map[int]sql-wrapper.Readable{}
 
 	id := 0 // Note: ID is not a custom variable and is required
 
@@ -150,7 +150,7 @@ This function is relatively repeatable from project to project. All that differs
 Now that your struct has been finished, a schema must be created to keep your struct objects synced to SQL. Creating a schema can be done as so with the required parameters.
 
 ```go
-schema, err := sql_wrapper.NewSchema[Record](db, Record{})
+schema, err := sql-wrapper.NewSchema[Record](db, Record{})
 ```
 
 In order to create a schema, you must provide:
@@ -223,30 +223,30 @@ You can find more information in the [LICENSE][license-url] file.
 
 Ethan Baker - contact@ethanbaker.dev - [LinkedIn][linkedin-url]
 
-Project Link: [https://github.com/ethanbaker/sql_wrapper][project-url]
+Project Link: [https://github.com/ethanbaker/sql-wrapper][project-url]
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/ethanbaker/sql_wrapper.svg
-[forks-shield]: https://img.shields.io/github/forks/ethanbaker/sql_wrapper.svg
-[stars-shield]: https://img.shields.io/github/stars/ethanbaker/sql_wrapper.svg
-[issues-shield]: https://img.shields.io/github/issues/ethanbaker/sql_wrapper.svg
-[license-shield]: https://img.shields.io/github/license/ethanbaker/sql_wrapper.svg
+[contributors-shield]: https://img.shields.io/github/contributors/ethanbaker/sql-wrapper.svg
+[forks-shield]: https://img.shields.io/github/forks/ethanbaker/sql-wrapper.svg
+[stars-shield]: https://img.shields.io/github/stars/ethanbaker/sql-wrapper.svg
+[issues-shield]: https://img.shields.io/github/issues/ethanbaker/sql-wrapper.svg
+[license-shield]: https://img.shields.io/github/license/ethanbaker/sql-wrapper.svg
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?logo=linkedin&colorB=555
 
-[contributors-url]: <https://github.com/ethanbaker/sql_wrapper/graphs/contributors>
-[forks-url]: <https://github.com/ethanbaker/sql_wrapper/network/members>
-[stars-url]: <https://github.com/ethanbaker/sql_wrapper/stargazers>
-[issues-url]: <https://github.com/ethanbaker/sql_wrapper/issues>
-[pulls-url]: <https://github.com/ethanbaker/sql_wrapper/pulls>
-[license-url]: <https://github.com/ethanbaker/sql_wrapper/blob/master/LICENSE>
+[contributors-url]: <https://github.com/ethanbaker/sql-wrapper/graphs/contributors>
+[forks-url]: <https://github.com/ethanbaker/sql-wrapper/network/members>
+[stars-url]: <https://github.com/ethanbaker/sql-wrapper/stargazers>
+[issues-url]: <https://github.com/ethanbaker/sql-wrapper/issues>
+[pulls-url]: <https://github.com/ethanbaker/sql-wrapper/pulls>
+[license-url]: <https://github.com/ethanbaker/sql-wrapper/blob/master/LICENSE>
 [linkedin-url]: <https://linkedin.com/in/ethandbaker>
-[project-url]: <https://github.com/ethanbaker/sql_wrapper>
+[project-url]: <https://github.com/ethanbaker/sql-wrapper>
 
-[documentation-url]: <https://godoc.org/github.com/ethanbaker/sql_wrapper>
+[documentation-url]: <https://godoc.org/github.com/ethanbaker/sql-wrapper>
 
 [conventional-commits-url]: <https://www.conventionalcommits.org/en/v1.0.0/#summary>
 [conventional-branches-url]: <https://docs.microsoft.com/en-us/azure/devops/repos/git/git-branching-guidance?view=azure-devops>
