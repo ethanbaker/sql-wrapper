@@ -12,7 +12,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: build temp directory
+    - name: setup workspace
+      shell: bash
       run: mkdir ./temp
 
     - name: set up go
@@ -59,11 +60,14 @@ jobs:
 
     - name: save coverage badge
       run: |
+        if [[ `git status --porcelain` ]]
+        then
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add .
         git commit -am "auto: update dynamic content"
         git push
+        fi
 
     - name: fail on low coverage
       run: |
