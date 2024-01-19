@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/ethanbaker/sql_wrapper"
+	sql_wrapper "github.com/ethanbaker/sql-wrapper"
 	"github.com/stretchr/testify/assert"
 )
 

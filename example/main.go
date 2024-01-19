@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ethanbaker/sql_wrapper"
+	sql_wrapper "github.com/ethanbaker/sql-wrapper"
 	"github.com/go-sql-driver/mysql"
 )
 
