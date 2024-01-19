@@ -21,11 +21,9 @@ jobs:
         go-version: stable
 
     - name: build
-      working-directory: ./temp
       run: go build -v ./...
 
     - name: test
-      working-directory: ./temp
       run: go test -v ./... -coverprofile ./temp/coverage.out
 
     - name: get coverage percent
