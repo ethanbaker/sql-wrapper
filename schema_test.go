@@ -2,232 +2,509 @@ package sql_wrapper_test
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
-	"reflect"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	sql_wrapper "github.com/ethanbaker/sql-wrapper"
+	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 )
 
-const TestObject_tableSQL = "CREATE TABLE IF NOT EXISTS TestObject(id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, Name VARCHAR(128), Age INT(255), Weather ENUM('Summer', 'Autumn', 'Winter', 'Spring') NOT NULL);"
-const TestObject_insertSQL = "INSERT INTO TestObject (id, Name, Age, Weather) VALUES (%#v, %#v, %#v, %#v);"
-const TestObject_updateSQL = "UPDATE TestObject SET Name = %#v, Age = %#v, Weather = %#v WHERE id = %#v;"
-const TestObject_deleteSQL = "DELETE FROM TestObject WHERE id = %#v;"
+// ---------- Types ----------
 
-// NewMock creates a new mock SQL database for testing
-func newMock() (*sql.DB, sqlmock.Sqlmock) {
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	if err != nil {
-		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
+// Season is used to encode an enum into SQL
+type Season string
 
-	return db, mock
+const (
+	Undefined Season = "Undefined"
+	Summer    Season = "Summer"
+	Autumn    Season = "Autumn"
+	Winter    Season = "Winter"
+	Spring    Season = "Spring"
+)
+
+// TestObject is used to encode tables into SQL
+type TestObject struct {
+	// Generic struct attributes
+	Name    string `sql:"Name" def:"VARCHAR(128)"`
+	Age     int    `sql:"Age" def:"INT(255)"`
+	Weather Season `def:"ENUM('Summer', 'Autumn', 'Winter', 'Spring') NOT NULL"`
+	Hidden  string `sql:"-"`
 }
 
-func TestSave(t *testing.T) {
+// Read reads in TestObjects from an SQL query
+func (t TestObject) Read(db *sql.DB) (map[int]sql_wrapper.Readable, error) {
+	items := map[int]sql_wrapper.Readable{}
+
+	// Get the main elements
+	rows, err := db.Query("SELECT * FROM TestObject")
+	if err != nil {
+		return items, err
+	}
+	defer rows.Close()
+
+	// Read for each row
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	for rows.Next() {
+		if err := rows.Scan(&id, &name, &age, &weather); err != nil {
+			return items, err
+		}
+
+		obj := TestObject{Name: name, Age: age, Weather: weather}
+		items[id] = &obj
+	}
+
+	return items, nil
+}
+
+// ---------- Globals ----------
+
+var database *sql.DB
+var wrapper *sql_wrapper.Wrapper[*TestObject]
+
+var cfg = mysql.Config{
+	User:   "sql_wrapper_test",
+	Passwd: "abc123",
+	Net:    "tcp",
+	Addr:   "127.0.0.1:3306",
+	DBName: "sql_wrapper_test",
+}
+
+// ---------- Tests ----------
+
+func TestInsert(t *testing.T) {
+	setup()
 	assert := assert.New(t)
-	db, mock := newMock()
 
 	obj := TestObject{Name: "Jack", Age: 20, Weather: Summer, Hidden: "abc"}
 
-	// Expect the table creation
-	mock.ExpectBegin()
-	mock.ExpectExec(TestObject_tableSQL).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	// Create the new schema
-	schema, err := sql_wrapper.NewSchema[TestObject](db, TestObject{})
+	// Insert the test object
+	objID, err := wrapper.Insert(&obj)
 	assert.Nil(err)
 
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_insertSQL, 1, obj.Name, obj.Age, obj.Weather)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	// Save the test object
-	err = schema.Save(&obj)
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
 	assert.Nil(err)
+	defer rows.Close()
 
-	// Get the objects that are present
-	objs, err := schema.Get()
-	assert.Nil(err)
-	assert.Equal(1, len(objs))
-	assert.True(reflect.DeepEqual(&obj, objs[1]))
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
 
-	// Change the test object
-	obj.Name = "John"
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
 
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_updateSQL, obj.Name, obj.Age, obj.Weather, 1)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	err = schema.Save(&obj)
-	assert.Nil(err)
-
-	// Test getting the updated object
-	objs, err = schema.Get()
-	assert.Nil(err)
-	assert.NotNil(objs)
-	assert.Equal(1, len(objs))
-	assert.Equal("John", objs[1].Name)
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
 }
 
 func TestGet(t *testing.T) {
+	setup()
 	assert := assert.New(t)
-	db, mock := newMock()
 
-	obj := TestObject{Name: "Jack", Age: 20, Weather: Summer, Hidden: "abc"}
+	obj := TestObject{Name: "John", Age: 25, Weather: Spring, Hidden: "abc"}
 
-	// Expect the table creation when creating a new schema
-	mock.ExpectBegin()
-	mock.ExpectExec(TestObject_tableSQL).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	schema, err := sql_wrapper.NewSchema[TestObject](db, TestObject{})
-	assert.Nil(err)
-
-	// Try getting the objects when there are no objects present
-	objs, err := schema.Get()
+	// There should be no objects in the schema
+	objs, err := wrapper.Get()
 	assert.Nil(err)
 	assert.Equal(0, len(objs))
 
-	// Expect insert statement when inserting an object
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_insertSQL, 1, obj.Name, obj.Age, obj.Weather)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	id, err := schema.Insert(&obj)
+	// Insert the test object
+	objID, err := wrapper.Insert(&obj)
 	assert.Nil(err)
-	assert.Equal(1, id)
 
-	// Get the objects that are present
-	objs, err = schema.Get()
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
+	assert.Nil(err)
+	defer rows.Close()
+
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// There should be one object in the wrapper
+	objs, err = wrapper.Get()
 	assert.Nil(err)
 	assert.Equal(1, len(objs))
-	assert.True(reflect.DeepEqual(&obj, objs[id]))
-}
-
-func TestInsert(t *testing.T) {
-	assert := assert.New(t)
-	db, mock := newMock()
-
-	obj := TestObject{Name: "Jack", Age: 20, Weather: Summer, Hidden: "abc"}
-
-	// Expect the table creation when creating a new schema
-	mock.ExpectBegin()
-	mock.ExpectExec(TestObject_tableSQL).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	schema, err := sql_wrapper.NewSchema[TestObject](db, TestObject{})
-	assert.Nil(err)
-
-	// Expect insert statement when inserting an object
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_insertSQL, 1, obj.Name, obj.Age, obj.Weather)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	id, err := schema.Insert(&obj)
-	assert.Nil(err)
-	assert.Equal(1, id)
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
 }
 
 func TestUpdate(t *testing.T) {
+	setup()
 	assert := assert.New(t)
-	db, mock := newMock()
 
-	obj := TestObject{Name: "Jack", Age: 20, Weather: Summer, Hidden: "abc"}
+	obj := TestObject{Name: "Luke", Age: 30, Weather: Winter, Hidden: "abc"}
 
-	// Expect the table creation when creating a new schema
-	mock.ExpectBegin()
-	mock.ExpectExec(TestObject_tableSQL).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	schema, err := sql_wrapper.NewSchema[TestObject](db, TestObject{})
-	assert.Nil(err)
-
-	// Try getting the objects when there are no objects present
-	objs, err := schema.Get()
+	// There should be no objects present in the wrapper
+	objs, err := wrapper.Get()
 	assert.Nil(err)
 	assert.Equal(0, len(objs))
 
-	// Expect insert statement when inserting an object
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_insertSQL, 1, obj.Name, obj.Age, obj.Weather)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	id, err := schema.Insert(&obj)
+	// Insert one object
+	objID, err := wrapper.Insert(&obj)
 	assert.Nil(err)
-	assert.Equal(1, id)
 
-	// Get the objects that are present
-	objs, err = schema.Get()
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
 	assert.Nil(err)
-	assert.Equal(1, len(objs))
-	assert.True(reflect.DeepEqual(&obj, objs[id]))
+	defer rows.Close()
 
-	// Expect an update statement when updating an object
-	obj.Name = "John"
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
 
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_updateSQL, obj.Name, obj.Age, obj.Weather, 1)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
 
-	err = schema.Update(&obj)
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// Change the object
+	obj.Name = "Nathan"
+	obj.Age = 100
+	obj.Weather = Autumn
+
+	// Update the object
+	err = wrapper.Update(&obj)
 	assert.Nil(err)
 
 	// Test getting the updated object
-	objs, err = schema.Get()
+	rows, err = database.Query("SELECT * FROM TestObject")
+	assert.Nil(err)
+	defer rows.Close()
+
+	// Scan in the element
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// There should be one object in the wrapper
+	objs, err = wrapper.Get()
 	assert.Nil(err)
 	assert.Equal(1, len(objs))
-	assert.Equal("John", objs[id].Name)
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
 }
 
 func TestDelete(t *testing.T) {
+	setup()
 	assert := assert.New(t)
-	db, mock := newMock()
+
+	obj := TestObject{Name: "Steve", Age: 50, Weather: Summer, Hidden: "abc"}
+
+	// There should be zero objects in the wrapper
+	objs, err := wrapper.Get()
+	assert.Nil(err)
+	assert.Equal(0, len(objs))
+
+	// Insert the test object
+	objID, err := wrapper.Insert(&obj)
+	assert.Nil(err)
+
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
+	assert.Nil(err)
+	defer rows.Close()
+
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// There should be one object present in the wrapper
+	objs, err = wrapper.Get()
+	assert.Nil(err)
+	assert.Equal(1, len(objs))
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
+
+	// Delete the object from the wrapper
+	err = wrapper.Delete(&obj)
+	assert.Nil(err)
+
+	// There should be zero objects in the wrapper
+	objs, err = wrapper.Get()
+	assert.Nil(err)
+	assert.Equal(0, len(objs))
+
+	// Test the SQL to make sure there are no entries
+	rows, err = database.Query("SELECT * FROM TestObject")
+	assert.Nil(err)
+	defer rows.Close()
+
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+}
+
+func TestRead(t *testing.T) {
+	setup()
+	assert := assert.New(t)
+
+	obj := TestObject{Name: "Steve", Age: 50, Weather: Summer, Hidden: "abc"}
+
+	// There should be zero objects in the wrapper
+	objs, err := wrapper.Get()
+	assert.Nil(err)
+	assert.Equal(0, len(objs))
+
+	// Insert the test object
+	objID, err := wrapper.Insert(&obj)
+	assert.Nil(err)
+
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
+	assert.Nil(err)
+	defer rows.Close()
+
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// There should be one object present in the wrapper
+	objs, err = wrapper.Get()
+	assert.Nil(err)
+	assert.Equal(1, len(objs))
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
+
+	// Create a new wrapper
+	wrapper2, err := sql_wrapper.NewWrapper[*TestObject](database, TestObject{})
+	assert.Nil(err)
+
+	// Read in using the second wrapper
+	assert.Nil(wrapper2.Read())
+
+	// There should be one object present in the new wrapper
+	objs, err = wrapper2.Get()
+	assert.Nil(err)
+	assert.Equal(1, len(objs))
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
+}
+
+func TestSave(t *testing.T) {
+	setup()
+	assert := assert.New(t)
 
 	obj := TestObject{Name: "Jack", Age: 20, Weather: Summer, Hidden: "abc"}
 
-	// Expect the table creation when creating a new schema
-	mock.ExpectBegin()
-	mock.ExpectExec(TestObject_tableSQL).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	schema, err := sql_wrapper.NewSchema[TestObject](db, TestObject{})
+	// Save the test object
+	err := wrapper.Save(&obj)
 	assert.Nil(err)
 
-	// Try getting the objects when there are no objects present
-	objs, err := schema.Get()
+	// Get the ID of the object
+	objID, err := wrapper.GetID(&obj)
 	assert.Nil(err)
-	assert.Equal(0, len(objs))
 
-	// Expect insert statement when inserting an object
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_insertSQL, 1, obj.Name, obj.Age, obj.Weather)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-
-	id, err := schema.Insert(&obj)
+	// Test that the SQL database has the right entries
+	rows, err := database.Query("SELECT * FROM TestObject")
 	assert.Nil(err)
-	assert.Equal(1, id)
+	defer rows.Close()
 
-	// Get the objects that are present
-	objs, err = schema.Get()
+	// Read in the first entry
+	var (
+		id      int
+		name    string
+		age     int
+		weather Season
+	)
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// There should be one object in the wrapper
+	objs, err := wrapper.Get()
 	assert.Nil(err)
 	assert.Equal(1, len(objs))
-	assert.True(reflect.DeepEqual(&obj, objs[id]))
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
 
-	// Delete the object and expect deletion from the SQL driver
-	mock.ExpectBegin()
-	mock.ExpectExec(fmt.Sprintf(TestObject_deleteSQL, id)).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
+	// Change the test object
+	obj.Name = "John"
+	obj.Age = 70
+	obj.Weather = Spring
 
-	err = schema.Delete(&obj)
+	err = wrapper.Save(&obj)
 	assert.Nil(err)
 
-	// Try getting the objects when there are no objects present
-	objs, err = schema.Get()
+	// Test that the SQL database has the updated entries
+	rows, err = database.Query("SELECT * FROM TestObject")
 	assert.Nil(err)
-	assert.Equal(0, len(objs))
+	defer rows.Close()
+
+	// Read in the first entry
+	assert.True(rows.Next())
+	assert.Nil(rows.Scan(&id, &name, &age, &weather))
+
+	// Expect that it's equal to the object
+	assert.Equal(objID, id)
+	assert.Equal(obj.Name, name)
+	assert.Equal(obj.Age, age)
+	assert.Equal(obj.Weather, weather)
+
+	// There should be no more objects in the query
+	assert.False(rows.Next())
+	assert.Nil(rows.Err())
+
+	// Test getting the updated object
+	objs, err = wrapper.Get()
+	assert.Nil(err)
+	assert.NotNil(objs)
+	assert.Equal(1, len(objs))
+	assert.Equal(obj.Name, objs[objID].Name)
+	assert.Equal(obj.Age, objs[objID].Age)
+	assert.Equal(obj.Weather, objs[objID].Weather)
+}
+
+// ---------- Test Setup ----------
+
+func setup() {
+	// Begin a transaction
+	tx, err := database.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Drop the current wrapper
+	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObject;")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObjectTestObject;")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = database.Exec("DROP TABLE IF EXISTS TestObject;")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Rollback the transcation on a panic
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+		if err := recover(); err != nil {
+			tx.Rollback()
+			panic(err)
+		}
+	}()
+
+	// Create the new wrapper
+	wrapper, err = sql_wrapper.NewWrapper[*TestObject](database, TestObject{})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func TestMain(m *testing.M) {
+	// Connect to a testing database
+	db, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		log.Fatal(err)
+	}
+	database = db
+	defer database.Close()
+
+	// Run the tests
+	m.Run()
 }

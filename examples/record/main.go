@@ -53,21 +53,30 @@ type Record struct {
 	Hidden string   `sql:"-"`
 }
 
-func (r Record) Read(rows *sql.Rows) (map[int]sql_wrapper.Readable, error) {
+func (r Record) Read(db *sql.DB) (map[int]sql_wrapper.Readable, error) {
 	items := map[int]sql_wrapper.Readable{}
 
+	// Get the main elements
+	rows, err := db.Query("SELECT * FROM Record")
+	if err != nil {
+		return items, err
+	}
+	defer rows.Close()
+
 	// Read for each row
-	id := 0
-	author := ""
-	likes := 0
-	t := Undefined
+	var (
+		id     int
+		author string
+		likes  int
+		t      PostType
+	)
 	for rows.Next() {
 		if err := rows.Scan(&id, &author, &likes, &t); err != nil {
 			return items, err
 		}
 
 		obj := Record{Author: author, Likes: likes, Type: t}
-		items[id] = obj
+		items[id] = &obj
 	}
 
 	return items, nil
@@ -75,9 +84,10 @@ func (r Record) Read(rows *sql.Rows) (map[int]sql_wrapper.Readable, error) {
 
 func getRecords() {
 	// Get the records
-	records, err := schema.Get()
+	records, err := wrapper.Get()
 	if err != nil {
 		fmt.Printf("Error in receiving records from SQL: %v\n", err.Error())
+		return
 	}
 
 	// Print the records
@@ -123,7 +133,7 @@ func addRecord() {
 	}
 
 	// Add the record to the schema
-	err = schema.Save(&record)
+	err = wrapper.Save(&record)
 	if err != nil {
 		fmt.Printf("Error saving record: %v\n", err.Error())
 	} else {
@@ -143,7 +153,7 @@ func updateRecord() {
 	}
 
 	// Find the record to update
-	records, err := schema.Get()
+	records, err := wrapper.Get()
 	if err != nil {
 		fmt.Printf("Error in receiving records from SQL: %v\n", err.Error())
 	}
@@ -188,7 +198,7 @@ func updateRecord() {
 	}
 
 	// Update the record
-	err = schema.Save(record)
+	err = wrapper.Save(record)
 	if err != nil {
 		fmt.Printf("Error saving record: %v\n", err.Error())
 	} else {
@@ -198,7 +208,7 @@ func updateRecord() {
 
 func deleteRecord() {
 	// Get the record ID to delete
-	fmt.Print("Enter record ID to update: ")
+	fmt.Print("Enter record ID to delete: ")
 	scanner.Scan()
 
 	deleteID, err := strconv.ParseInt(scanner.Text(), 10, 0)
@@ -208,7 +218,7 @@ func deleteRecord() {
 	}
 
 	// Find the record to delete
-	records, err := schema.Get()
+	records, err := wrapper.Get()
 	if err != nil {
 		fmt.Printf("Error in receiving records from SQL: %v\n", err.Error())
 	}
@@ -222,7 +232,7 @@ func deleteRecord() {
 	}
 
 	// Delete the record
-	if err = schema.Delete(record); err != nil {
+	if err = wrapper.Delete(record); err != nil {
 		fmt.Printf("Error deleting record: %v\n", err.Error())
 	} else {
 		fmt.Println("Record deleted successfully")
@@ -231,7 +241,7 @@ func deleteRecord() {
 
 // Globals
 var scanner *bufio.Scanner
-var schema *sql_wrapper.Schema[Record]
+var wrapper *sql_wrapper.Wrapper[*Record]
 
 func main() {
 	// Open SQL database
@@ -241,17 +251,17 @@ func main() {
 	}
 
 	scanner = bufio.NewScanner(os.Stdin)
-	schema, err = sql_wrapper.NewSchema[Record](db, Record{})
+	wrapper, err = sql_wrapper.NewWrapper[*Record](db, Record{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Read in credentials from the schema
-	if err := schema.Read(); err != nil {
+	if err := wrapper.Read(); err != nil {
 		log.Fatal(err)
 	}
 
-	// Read user input to add records
+	// Read user input
 	for {
 		fmt.Print(AskPrompt)
 		scanner.Scan()
@@ -287,6 +297,6 @@ func main() {
 
 	// handle error
 	if scanner.Err() != nil {
-		fmt.Println("Error: ", scanner.Err())
+		fmt.Println("Scanner error: ", scanner.Err())
 	}
 }
