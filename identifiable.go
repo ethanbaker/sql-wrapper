@@ -2,32 +2,32 @@ package sql_wrapper
 
 // identifiableWrapper is used to wrap existing types to provide
 // Identifiable support
-type identifiableWrapper[T Readable] struct {
+type identifiableWrapper struct {
 	ID     int
-	object *T
+	object Readable
 
-	schema *Schema[T]
+	schema *schema
 }
 
-func (i *identifiableWrapper[T]) GetID() int {
+func (i *identifiableWrapper) GetID() int {
 	return i.ID
 }
 
-func (i *identifiableWrapper[T]) SetID(id int) {
+func (i *identifiableWrapper) SetID(id int) {
 	i.ID = id
 }
 
 // Object gets the encapsulated object from the wrapper
-func (i identifiableWrapper[T]) Object() *T {
+func (i identifiableWrapper) Object() Readable {
 	return i.object
 }
 
 // Create a new IdentifiableWrapper object
-func newIdentifiableWrapper[T Readable](schema *Schema[T], object *T, id int) identifiableWrapper[T] {
-	i := identifiableWrapper[T]{}
+func newIdentifiableWrapper(s *schema, object Readable, id int) identifiableWrapper {
+	i := identifiableWrapper{}
 	i.ID = id
 	i.object = object
-	i.schema = schema
+	i.schema = s
 
 	return i
 }
