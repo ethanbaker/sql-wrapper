@@ -97,13 +97,18 @@ func (s *schema) updateSQL(id int, obj Readable) ([]string, error) {
 				return statements, fmt.Errorf("cannot cast schema object as Readable")
 			}
 
-			// Get the ID of the object
-			id, err := schema.getID(obj)
-			if err != nil {
-				return statements, err
-			}
+			if obj != nil {
+				// Get the ID of the object and add it if the object is not nil
+				id, err := schema.getID(obj)
+				if err != nil {
+					return statements, err
+				}
 
-			body += fmt.Sprintf("%v = %#v, ", name, id)
+				body += fmt.Sprintf("%v = %#v, ", name, id)
+			} else {
+				// If the object is nil, insert null
+				body += "NULL, "
+			}
 		} else if rel == OneToMany || rel == ManyToMany {
 			// In the case of a OneToMany or ManyToMany relationship, update entries to another table
 			tableRef := strings.Split(t.Field(i).Type.String(), ".")[1]
@@ -204,13 +209,18 @@ func (s *schema) insertSQL(id int, obj Readable) ([]string, error) {
 				return statements, fmt.Errorf("cannot cast schema object as Readable")
 			}
 
-			// Get the ID of the object
-			id, err := schema.getID(val)
-			if err != nil {
-				return statements, err
-			}
+			if val != nil {
+				// Get the ID of the object if it is not nil
+				id, err := schema.getID(val)
+				if err != nil {
+					return statements, err
+				}
 
-			body += fmt.Sprintf("%#v, ", id)
+				body += fmt.Sprintf("%#v, ", id)
+			} else {
+				// If the object is nil, insert null
+				body += "NULL, "
+			}
 		} else if rel == OneToMany || rel == ManyToMany {
 			// In the case of a OneToMany or ManyToMany relationships, add entries to another table
 			tableRef := strings.Split(t.Field(i).Type.String(), ".")[1]
