@@ -30,8 +30,6 @@ func (s *schema) deleteSQL(id int) ([]string, error) {
 		return statements, fmt.Errorf("cannot insert record with no table name")
 	}
 
-	statements = append(statements, fmt.Sprintf("DELETE FROM %v WHERE id = %v;", s.table, id))
-
 	// Add another statement if a one-to-many relationship is present
 	t := reflect.TypeOf(s.template)
 	for i := 0; i < t.NumField(); i++ {
@@ -45,6 +43,7 @@ func (s *schema) deleteSQL(id int) ([]string, error) {
 		}
 	}
 
+	statements = append(statements, fmt.Sprintf("DELETE FROM %v WHERE id = %v;", s.table, id))
 	return statements, nil
 }
 
@@ -97,13 +96,18 @@ func (s *schema) updateSQL(id int, obj Readable) ([]string, error) {
 				return statements, fmt.Errorf("cannot cast schema object as Readable")
 			}
 
-			// Get the ID of the object
-			id, err := schema.getID(obj)
-			if err != nil {
-				return statements, err
-			}
+			if obj != nil && !reflect.ValueOf(obj).IsNil() {
+				// Get the ID of the object and add it if the object is not nil
+				id, err := schema.getID(obj)
+				if err != nil {
+					return statements, err
+				}
 
-			body += fmt.Sprintf("%v = %#v, ", name, id)
+				body += fmt.Sprintf("%v = %#v, ", name, id)
+			} else {
+				// If the object is nil, insert null
+				body += fmt.Sprintf("%v = NULL, ", name)
+			}
 		} else if rel == OneToMany || rel == ManyToMany {
 			// In the case of a OneToMany or ManyToMany relationship, update entries to another table
 			tableRef := strings.Split(t.Field(i).Type.String(), ".")[1]
@@ -144,7 +148,8 @@ func (s *schema) updateSQL(id int, obj Readable) ([]string, error) {
 		}
 	}
 
-	statements = append(statements, header+body[0:len(body)-2]+footer)
+	statements = append([]string{header + body[0:len(body)-2] + footer}, statements...)
+
 	return statements, nil
 }
 
@@ -204,13 +209,18 @@ func (s *schema) insertSQL(id int, obj Readable) ([]string, error) {
 				return statements, fmt.Errorf("cannot cast schema object as Readable")
 			}
 
-			// Get the ID of the object
-			id, err := schema.getID(val)
-			if err != nil {
-				return statements, err
-			}
+			if val != nil && !reflect.ValueOf(val).IsNil() {
+				// Get the ID of the object if it is not nil
+				id, err := schema.getID(val)
+				if err != nil {
+					return statements, err
+				}
 
-			body += fmt.Sprintf("%#v, ", id)
+				body += fmt.Sprintf("%#v, ", id)
+			} else {
+				// If the object is nil, insert null
+				body += "NULL, "
+			}
 		} else if rel == OneToMany || rel == ManyToMany {
 			// In the case of a OneToMany or ManyToMany relationships, add entries to another table
 			tableRef := strings.Split(t.Field(i).Type.String(), ".")[1]
@@ -250,8 +260,11 @@ func (s *schema) insertSQL(id int, obj Readable) ([]string, error) {
 
 	statements = append(statements, header+strings.Join(columns, ", ")+body[0:len(body)-2]+footer)
 
-	return statements, nil
+	temp := statements[0]
+	statements[0] = statements[len(statements)-1]
+	statements[len(statements)-1] = temp
 
+	return statements, nil
 }
 
 // createTableSQL creates a string that will create an SQL table
@@ -306,16 +319,21 @@ func (s *schema) createTableSQL() ([]string, error) {
 			// The field is a one-to-many foreign relation
 			tableRef := strings.Split(field.Type.String(), ".")[1]
 
-			statements = append(statements, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %[1]v%[2]v(%[1]vID INT UNSIGNED, %[3]v INT UNSIGNED UNIQUE, FOREIGN KEY (%[1]vID) REFERENCES %[2]v(id));", s.table, tableRef, name))
+			statements = append(statements, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %[1]v%[2]v(%[1]vID INT UNSIGNED, %[3]v INT UNSIGNED UNIQUE, FOREIGN KEY (%[1]vID) REFERENCES %[1]v(id), FOREIGN KEY (%[3]v) REFERENCES %[2]v(id));", s.table, tableRef, name))
 		} else if rel == ManyToMany {
 			// The field is a many-to-many foreign relation
 			tableRef := strings.Split(field.Type.String(), ".")[1]
 
-			statements = append(statements, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %[1]v%[2]v(%[1]vID INT UNSIGNED, %[3]v INT UNSIGNED, FOREIGN KEY (%[1]vID) REFERENCES %[2]v(id));", s.table, tableRef, name))
+			statements = append(statements, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %[1]v%[2]v(%[1]vID INT UNSIGNED, %[3]v INT UNSIGNED, FOREIGN KEY (%[1]vID) REFERENCES %[1]v(id), FOREIGN KEY (%[3]v) REFERENCES %[2]v(id));", s.table, tableRef, name))
 		}
 	}
 
 	statements = append(statements, header+body[0:len(body)-2]+footer)
+
+	temp := statements[0]
+	statements[0] = statements[len(statements)-1]
+	statements[len(statements)-1] = temp
+
 	return statements, nil
 }
 

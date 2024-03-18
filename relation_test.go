@@ -749,12 +749,12 @@ func referenceSetup() {
 	}
 
 	// Drop the current wrapper
-	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObject;")
+	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObjectTestObject;")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObjectTestObject;")
+	_, err = database.Exec("DROP TABLE IF EXISTS ReferenceObject;")
 	if err != nil {
 		log.Fatal(err)
 	}
